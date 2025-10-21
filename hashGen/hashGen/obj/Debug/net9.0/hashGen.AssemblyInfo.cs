@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("hashGen")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e2e391c927f2c200ae9b60f9f26c387c3d2f0bba")]
 [assembly: System.Reflection.AssemblyProductAttribute("hashGen")]
 [assembly: System.Reflection.AssemblyTitleAttribute("hashGen")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

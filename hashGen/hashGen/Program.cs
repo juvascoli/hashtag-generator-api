@@ -1,205 +1,96 @@
-﻿using System.Text.Json;
-using hashGen.Models;
-using Microsoft.AspNetCore.RateLimiting;
-using System.Threading.RateLimiting;
+﻿using System.Net.Http.Json;
+using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Services
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-builder.Services.AddHttpClient();
-
-// Rate limiting simples (opcional)
-builder.Services.AddRateLimiter(options =>
+builder.Services.AddSwaggerGen(opt =>
 {
-    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: ctx.Connection.RemoteIpAddress?.ToString() ?? "anon",
-            factory: _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 20,
-                Window = TimeSpan.FromMinutes(1),
-                AutoReplenishment = true,
-                QueueLimit = 0
-            }));
-
-    options.OnRejected = async (context, token) =>
+    opt.SwaggerDoc("v1", new OpenApiInfo
     {
-        context.HttpContext.Response.StatusCode = 429;
-        await context.HttpContext.Response.WriteAsync("Muitas requisições. Tente novamente mais tarde.", token);
-    };
+        Title = "Hashtag Generator API",
+        Version = "v1",
+        Description = "API Minimal com integração ao Ollama para geração de hashtags."
+    });
 });
 
 var app = builder.Build();
 
-app.UseRateLimiter();
-app.UseSwagger();
-app.UseSwaggerUI();
+var hashtagHistory = new List<object>();
 
-// In-memory history (persistência apenas durante execução)
-var history = new List<HashResponse>();
-
-app.MapPost("/hashtags", async (HashRequest req, IHttpClientFactory httpFactory) =>
+if (app.Environment.IsDevelopment())
 {
-    // validações
-    if (string.IsNullOrWhiteSpace(req.Text))
-        return Results.BadRequest(new { error = "Campo 'text' é obrigatório." });
-
-    var count = req.Count <= 0 ? 10 : req.Count;
-    if (count > 30) count = 30;
-
-    var model = string.IsNullOrWhiteSpace(req.Model) ? "llama3.2:3b" : req.Model;
-
-    // Monta prompt controlado para obter apenas JSON com N hashtags
-    var prompt = $"""
-    Gere exatamente {count} hashtags únicas, curtas e relevantes para o texto abaixo.
-    Regras:
-    - Cada hashtag deve começar com '#'
-    - Sem espaços dentro da hashtag
-    - Sem duplicatas
-    - Retorne apenas um JSON válido no formato:
-      {{ "hashtags": ["#exemplo1", "#exemplo2", ...] }}
-    Texto: "{req.Text}"
-    """;
-
-    var client = httpFactory.CreateClient();
-
-    var body = new
+    app.UseSwagger();
+    app.UseSwaggerUI(opt =>
     {
-        model = model,
-        prompt = prompt,
-        stream = false
-    };
+        opt.SwaggerEndpoint("/swagger/v1/swagger.json", "Hashtag Generator API V1");
+        opt.RoutePrefix = "swagger";
+    });
+}
 
-    HttpResponseMessage ollamaResp;
+app.MapGet("/hashtags", () =>
+{
+    return Results.Ok(hashtagHistory);
+})
+.WithName("GetAllHashtags")
+.WithTags("Hashtags")
+.WithOpenApi(operation =>
+{
+    operation.Summary = "Retorna todas as hashtags já geradas";
+    operation.Description = "Endpoint GET que retorna o histórico das hashtags geradas pelo POST.";
+    return operation;
+});
+
+app.MapPost("/hashtags", async (HashtagRequest req) =>
+{
+    if (req.Count < 1 || req.Count > 30)
+        return Results.BadRequest(new { error = "O campo 'count' deve ser entre 1 e 30." });
+
+    if (string.IsNullOrWhiteSpace(req.Text) || string.IsNullOrWhiteSpace(req.Model))
+        return Results.BadRequest(new { error = "Text e model são obrigatórios." });
+
+    string ollamaPrompt = $@"
+Gere exatamente {req.Count} hashtags em português, sem espaços, sem duplicatas, formato JSON:
+{{""model"": ""{req.Model}"", ""count"": {req.Count}, ""hashtags"": [""#hashtag1"", ""#hashtag2"", ...]}}
+Tema: {req.Text}
+Responda apenas com JSON válido.";
+
+    using var http = new HttpClient();
+    var ollamaRequest = new { model = req.Model, prompt = ollamaPrompt, stream = false, format = "json" };
+    var ollamaResponse = await http.PostAsJsonAsync("http://localhost:11434/api/generate", ollamaRequest);
+
+    if (!ollamaResponse.IsSuccessStatusCode)
+        return Results.Problem("Falha ao consultar o Ollama.", statusCode: 500);
+
+    OllamaResponse? rawResponse;
     try
     {
-        ollamaResp = await client.PostAsJsonAsync("http://localhost:11434/api/generate", body);
-    }
-    catch (Exception ex)
-    {
-        return Results.BadRequest(new { error = "Não foi possível conectar ao Ollama.", detail = ex.Message });
-    }
+        rawResponse = await ollamaResponse.Content.ReadFromJsonAsync<OllamaResponse>();
+        if (rawResponse is null || string.IsNullOrEmpty(rawResponse.response))
+            return Results.Problem("Ollama não retornou resposta válida.", statusCode: 500);
 
-    if (!ollamaResp.IsSuccessStatusCode)
-    {
-        var text = await ollamaResp.Content.ReadAsStringAsync();
-        return Results.BadRequest(new { error = "Ollama retornou erro.", status = (int)ollamaResp.StatusCode, detail = text });
-    }
+        var jsonDoc = System.Text.Json.JsonDocument.Parse(rawResponse.response);
+        var hashtagsElem = jsonDoc.RootElement.GetProperty("hashtags");
+        var hashtags = hashtagsElem.EnumerateArray()
+            .Select(x => x.GetString()!.Replace(" ", ""))
+            .Distinct()
+            .Take(req.Count)
+            .ToList();
 
-    var respText = await ollamaResp.Content.ReadAsStringAsync();
-
-    // Tenta extrair JSON com "hashtags" do retorno do Ollama
-    List<string> hashtags = new();
-    try
-    {
-        // Tenta parsear a resposta inteira como JSON
-        using var doc = JsonDocument.Parse(respText);
-
-        // Alguns modelos retornam em "response" ou "choices" ou diretamente.
-        // Tentamos vários caminhos:
-        if (doc.RootElement.TryGetProperty("hashtags", out var arr))
-        {
-            hashtags = arr.EnumerateArray().Select(e => e.GetString() ?? string.Empty).Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
-        }
-        else if (doc.RootElement.TryGetProperty("response", out var respProp) && respProp.ValueKind == JsonValueKind.String)
-        {
-            // se "response" for string contendo JSON, tenta parsear
-            var maybeJson = respProp.GetString() ?? string.Empty;
-            if (maybeJson.TrimStart().StartsWith("{") || maybeJson.TrimStart().StartsWith("["))
-            {
-                using var inner = JsonDocument.Parse(maybeJson);
-                if (inner.RootElement.TryGetProperty("hashtags", out var innerArr))
-                {
-                    hashtags = innerArr.EnumerateArray().Select(e => e.GetString() ?? string.Empty).ToList();
-                }
-            }
-            else
-            {
-                // fallback: extrair hashtags por pattern
-                hashtags = ExtractHashtagsFromText(maybeJson, count);
-            }
-        }
-        else
-        {
-            // fallback geral: procurar por "hashtags" como string dentro do texto
-            var all = doc.RootElement.ToString();
-            hashtags = ExtractHashtagsFromText(all, count);
-        }
+        var responseObj = new { model = req.Model, count = hashtags.Count, hashtags };
+        hashtagHistory.Add(responseObj);
+        return Results.Ok(responseObj);
     }
     catch
     {
-        // parsing falhou -> tenta extrair hashtags por regex/texto
-        hashtags = ExtractHashtagsFromText(respText, count);
+        return Results.Problem("A resposta do Ollama não pôde ser convertida para JSON. Tente ajustar o prompt ou use outro modelo.", statusCode: 500);
     }
-
-    // Clean: garantir que comecem com '#', sem espaços e sem duplicatas, e exatos N (ou até o máximo encontrado)
-    var finalList = hashtags
-        .Select(h => h.Trim())
-        .Where(h => !string.IsNullOrWhiteSpace(h))
-        .Select(h => h.StartsWith("#") ? h : "#" + h.Replace(" ", ""))
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .Take(count)
-        .ToList();
-
-    if (!finalList.Any())
-        return Results.BadRequest(new { error = "Não foi possível extrair hashtags válidas da resposta do Ollama." });
-
-    var result = new HashResponse
-    {
-        Model = model,
-        Count = finalList.Count,
-        Hashtags = finalList
-    };
-
-    history.Add(result);
-
-    return Results.Ok(result);
 })
-.Produces<HashResponse>(200)
-.Produces(400);
-
-app.MapGet("/history", () => Results.Ok(history));
+.WithName("GenerateHashtags")
+.WithTags("Hashtags")
+.WithOpenApi();
 
 app.Run();
 
-// ----- Helpers -----
-static List<string> ExtractHashtagsFromText(string text, int max)
-{
-    if (string.IsNullOrWhiteSpace(text)) return new();
-
-    // tenta extrair palavras que começam com '#'
-    var list = new List<string>();
-    var tokens = text.Split(new[] { ' ', '\n', '\r', ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
-    foreach (var t in tokens)
-    {
-        var token = t.Trim().Trim('"', '\'');
-        if (token.StartsWith("#"))
-        {
-            list.Add(new string(token.TakeWhile(c => !char.IsWhiteSpace(c)).ToArray()));
-        }
-    }
-
-    // se não encontrou, tenta pegar palavras relevantes (fallback)
-    if (list.Count == 0)
-    {
-        var words = text
-            .Replace("\n", " ")
-            .Replace("\r", " ")
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Select(w => w.Trim(punctuation))
-            .Where(w => w.Length > 2)
-            .GroupBy(w => w, StringComparer.OrdinalIgnoreCase)
-            .OrderByDescending(g => g.Count())
-            .Select(g => "#" + g.Key)
-            .Take(max)
-            .ToList();
-
-        return words;
-    }
-
-    return list.Take(max).ToList();
-}
-
-static char[] punctuation = new[] { '.', ',', ';', ':', '!', '?', '"', '\'', '(', ')', '[', ']' };
+public record HashtagRequest(string Text, int Count, string Model);
+public record OllamaResponse(string response);
