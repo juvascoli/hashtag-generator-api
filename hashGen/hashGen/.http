@@ -1,0 +1,16 @@
+### Test POST hashtags
+POST http://localhost:5000/hashtags
+Content-Type: application/json
+
+{
+  "text": "marketing digital e growth hacking",
+  "count": 8,
+  "model": "llama3.2:3b"
+}
+
+###
+
+### Test GET hashtags (histórico)
+GET http://localhost:5000/hashtags
+
+###
