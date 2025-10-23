@@ -14,15 +14,15 @@ builder.Services.AddSwaggerGen(opt =>
     {
         Title = "Hashtag Generator API",
         Version = "v1",
-        Description = "Minimal API integrando Ollama para geração de hashtags"
+        Description = "gerando hashtags com o Ollama"
     });
 });
 
-// Register IHttpClientFactory
+// resgistro IHttpClientFactory
 builder.Services.AddHttpClient("ollama", client =>
 {
     client.BaseAddress = new Uri("http://localhost:11434/");
-    client.Timeout = TimeSpan.FromSeconds(30);
+    client.Timeout = TimeSpan.FromMinutes(3); 
 });
 
 var app = builder.Build();
@@ -49,15 +49,16 @@ app.MapGet("/hashtags", () =>
 
 app.MapPost("/hashtags", async (HashtagRequest req, IHttpClientFactory httpFactory) =>
 {
-    // Default and bounds
+    // padrão
     var count = req.Count ?? 10;
+    
     if (count < 1 || count > 30)
         return Results.BadRequest(new { error = "O campo 'count' deve ser entre 1 e 30." });
 
     if (string.IsNullOrWhiteSpace(req.Text) || string.IsNullOrWhiteSpace(req.Model))
         return Results.BadRequest(new { error = "Os campos 'text' e 'model' são obrigatórios." });
 
-    // JSON Schema para structured outputs do Ollama (esperamos esse formato exato)
+    // JSON Schema 
     var jsonSchema = new
     {
         type = "object",
@@ -127,7 +128,7 @@ Formato esperado: {"{"}"model": "<modelo>", "count": <n>, "hashtags": ["#exemplo
             structuredElement = root;
         }
 
-        // Tentar extrair hashtags
+        // tentativa de extrair hashtags
         if (!structuredElement.TryGetProperty("hashtags", out var hashtagsElem) || hashtagsElem.ValueKind != JsonValueKind.Array)
         {
             return Results.Problem("A resposta do Ollama não contém a propriedade 'hashtags' no formato esperado.", statusCode: 500);
@@ -141,7 +142,7 @@ Formato esperado: {"{"}"model": "<modelo>", "count": <n>, "hashtags": ["#exemplo
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // Se o modelo retornou menos que o solicitado, geramos fallback simples para completar até N
+        // caso o modelo retorne menos que o solicitado
         if (hashtags.Count < count)
         {
             var needed = count - hashtags.Count;
@@ -151,11 +152,11 @@ Formato esperado: {"{"}"model": "<modelo>", "count": <n>, "hashtags": ["#exemplo
         }
         else
         {
-            // garantir exatamente N (se retornou mais, truncamos)
+            // garantir exatamente N 
             hashtags = hashtags.Take(count).ToList();
         }
 
-        // Validações finais: começar com # e sem espaços
+        //  começar com # e sem espaços
         if (hashtags.Any(h => !h.StartsWith("#")))
             hashtags = hashtags.Select(h => h.StartsWith("#") ? h : "#" + h).ToList();
         hashtags = hashtags.Select(h => h.Replace(" ", "")).ToList();
@@ -242,5 +243,5 @@ static string Sanitize(string s)
     return outS.ToLowerInvariant();
 }
 
-// Request/response DTOs
+// request/response DTOs
 public record HashtagRequest(string Text, int? Count, string Model);

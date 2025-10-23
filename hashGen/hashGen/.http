@@ -3,9 +3,9 @@ POST http://localhost:5000/hashtags
 Content-Type: application/json
 
 {
-  "text": "marketing digital e growth hacking",
+  "text": "Gere hashtags sobre tecnologia",
   "count": 8,
-  "model": "llama3.2:3b"
+  "model": "llama3.2:1b"
 }
 
 ###
