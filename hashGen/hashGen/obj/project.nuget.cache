@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "l7YyImrxRP8=",
+  "dgSpecHash": "s3dmGLmy7RM=",
   "success": true,
-  "projectFilePath": "C:\\Users\\julia\\OneDrive\\Desktop\\cp05\\hashGen\\hashGen\\hashGen.csproj",
+  "projectFilePath": "C:\\Users\\julia\\OneDrive\\Desktop\\net-cp\\hashtag-generator-api\\hashGen\\hashGen\\hashGen.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\julia\\.nuget\\packages\\microsoft.aspnetcore.openapi\\9.0.10\\microsoft.aspnetcore.openapi.9.0.10.nupkg.sha512",
     "C:\\Users\\julia\\.nuget\\packages\\microsoft.extensions.apidescription.server\\9.0.0\\microsoft.extensions.apidescription.server.9.0.0.nupkg.sha512",

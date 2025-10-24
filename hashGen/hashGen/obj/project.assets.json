@@ -530,11 +530,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\julia\\OneDrive\\Desktop\\cp05\\hashGen\\hashGen\\hashGen.csproj",
+      "projectUniqueName": "C:\\Users\\julia\\OneDrive\\Desktop\\net-cp\\hashtag-generator-api\\hashGen\\hashGen\\hashGen.csproj",
       "projectName": "hashGen",
-      "projectPath": "C:\\Users\\julia\\OneDrive\\Desktop\\cp05\\hashGen\\hashGen\\hashGen.csproj",
+      "projectPath": "C:\\Users\\julia\\OneDrive\\Desktop\\net-cp\\hashtag-generator-api\\hashGen\\hashGen\\hashGen.csproj",
       "packagesPath": "C:\\Users\\julia\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\julia\\OneDrive\\Desktop\\cp05\\hashGen\\hashGen\\obj\\",
+      "outputPath": "C:\\Users\\julia\\OneDrive\\Desktop\\net-cp\\hashtag-generator-api\\hashGen\\hashGen\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\julia\\AppData\\Roaming\\NuGet\\NuGet.Config"
