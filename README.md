@@ -15,8 +15,8 @@ A aplicação demonstra o consumo de uma IA local via `HttpClient`, utilizando *
 🔗 [Download .NET 8](https://dotnet.microsoft.com/en-us/download/dotnet/8.0)
 - **Ollama** instalado e rodando localmente  
 🔗 [Download Ollama](https://ollama.com/download)
-- **Modelo utilizado**: ollama pull llama3.2:1b
+- **Modelo utilizado**: llama3.2:1b
 
 ###  Vídeo: 
 - mostrando a execução da API, chamada ao endpoint e resposta com hashtags.
-
+https://youtu.be/95VAp3HCIDI?si=9yxxTKeQXFam4aLV 
